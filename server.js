@@ -9,7 +9,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // MongoDB 연결 문자열을 환경 변수로 이동하는 것이 좋습니다.
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://admin:qwer1234@cluster0.j3cvved.mongodb.net/doctorchat?retryWrites=true&w=majority";
+const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
