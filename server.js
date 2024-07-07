@@ -156,3 +156,12 @@ app.get('/api/chat-history', async (req, res) => {
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
+
+app.get('/api/check-userinfo', async (req, res) => {
+  try {
+    const user = await UserInfo.findOne({ email: req.query.email });
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: "Error checking license" });
+  }
+});
