@@ -43,11 +43,41 @@ const ChatHistory = mongoose.model('chat_history', chatHistorySchema);
 // 1. 사용자 정보 등록
 app.post('/api/regist_user_info', async (req, res) => {
   try {
-    const newUser = new UserInfo(req.body);
-    await newUser.save();
-    res.status(201).json({ message: "User registered successfully" });
+    const { email, user_name, license_number = "" } = req.body;
+
+    if (!email || !user_name) {
+      return res.status(400).json({ error: "Email and user_name are required" });
+    }
+
+    const updateData = {
+      user_name,
+      license_number
+    };
+
+    const options = {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true
+    };
+
+    const user = await UserInfo.findOneAndUpdate(
+      { email },
+      updateData,
+      options
+    );
+
+    if (user.isNew) {
+      res.status(201).json({ message: "User registered successfully", user });
+    } else {
+      res.status(200).json({ message: "User information updated successfully", user });
+    }
   } catch (error) {
-    res.status(500).json({ error: "Error registering user" });
+    console.error("Error in user registration/update:", error);
+    if (error.code === 11000) {
+      // This handles the case where a unique index other than email causes a conflict
+      return res.status(409).json({ error: "User with this information already exists" });
+    }
+    res.status(500).json({ error: "Error in user registration/update", details: error.message });
   }
 });
 
