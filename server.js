@@ -145,13 +145,26 @@ app.put('/api/update-chat', async (req, res) => {
   }
 });
 
-// 4. 채팅 기록 조회
 app.get('/api/chat-history', async (req, res) => {
   try {
-    const chatHistory = await ChatHistory.find({ email: req.query.email });
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email parameter is required" });
+    }
+
+    const chatHistory = await ChatHistory.find({ email })
+      .sort({ chat_date: -1 }) // chat_date를 기준으로 내림차순 정렬
+      .exec();
+
+    if (chatHistory.length === 0) {
+      return res.status(404).json({ message: "No chat history found for this email" });
+    }
+
     res.json(chatHistory);
   } catch (error) {
-    res.status(500).json({ error: "Error fetching chat history" });
+    console.error("Error fetching chat history:", error);
+    res.status(500).json({ error: "Error fetching chat history", details: error.message });
   }
 });
 
