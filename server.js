@@ -34,7 +34,9 @@ const chatHistorySchema = new mongoose.Schema({
     sender: String,
     date: Date,
     message: String
-  }]
+  }],
+  input_token: { type: Number, default: 0 },
+  output_token: { type: Number, default: 0 }
 });
 
 // 모델 생성
@@ -45,6 +47,8 @@ const ChatHistory = mongoose.model('chat_history', chatHistorySchema);
 
 // 1. 사용자 정보 등록
 app.post('/api/regist_user_info', async (req, res) => {
+  console.log('try to regist user');
+  console.log(req.body);
   try {
     const { email, user_name, license_number = "" } = req.body;
 
@@ -99,9 +103,9 @@ app.put('/api/update-chat', async (req, res) => {
   try {
     console.log("Received request body:", JSON.stringify(req.body, null, 2));
 
-    const { email, chat_date, chat_list } = req.body;
+    const { email, chat_date, chat_list, input_token, output_token } = req.body;
 
-    if (!email || !chat_date || !chat_list || !Array.isArray(chat_list)) {
+    if (!email || !chat_date || !chat_list || !Array.isArray(chat_list) || !input_token || !output_token) {
       return res.status(400).json({ error: "Invalid request body" });
     }
 
@@ -119,27 +123,36 @@ app.put('/api/update-chat', async (req, res) => {
 
     console.log("Processed chat_list:", JSON.stringify(processedChatList, null, 2));
 
-    // 문서를 찾아 업데이트하거나, 없으면 새로 생성
-    const result = await ChatHistory.findOneAndUpdate(
-      { email, chat_date: parsedChatDate },
-      { 
-        $setOnInsert: { email, chat_date: parsedChatDate },
-        $push: { chat_list: { $each: processedChatList } }
-      },
-      { 
-        upsert: true, 
-        new: true, 
-        setDefaultsOnInsert: true 
-      }
-    );
+    // 먼저 문서를 찾습니다
+    let existingDoc = await ChatHistory.findOne({ email, chat_date: parsedChatDate });
 
-    console.log("Operation result:", result);
-
-    if (result.isNew) {
-      res.status(201).json({ message: "New chat history created", result });
-    } else {
+    if (existingDoc) {
+      // 기존 문서가 있는 경우, 값을 더합니다
+      const result = await ChatHistory.findOneAndUpdate(
+        { email, chat_date: parsedChatDate },
+        { 
+          $inc: { 
+            input_token: input_token, 
+            output_token: output_token 
+          },
+          $push: { chat_list: { $each: processedChatList } }
+        },
+        { new: true, setDefaultsOnInsert: true }
+      );
       res.json({ message: "Chat history updated", result });
+    } else {
+      // 새 문서를 생성합니다
+      const newDoc = new ChatHistory({
+        email,
+        chat_date: parsedChatDate,
+        chat_list: processedChatList,
+        input_token,
+        output_token
+      });
+      const result = await newDoc.save();
+      res.status(201).json({ message: "New chat history created", result });
     }
+
   } catch (error) {
     console.error("Error updating/creating chat:", error);
     res.status(500).json({ error: "Error updating/creating chat", details: error.message });
@@ -174,8 +187,10 @@ app.listen(port, () => {
 });
 
 app.get('/api/check-userinfo', async (req, res) => {
+  console.log(req.query.email);
   try {
     const user = await UserInfo.findOne({ email: req.query.email });
+    console.log(user);
     res.json({ user });
   } catch (error) {
     res.status(500).json({ error: "Error checking license" });
