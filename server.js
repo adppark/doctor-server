@@ -3,6 +3,9 @@ const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const app = express();
+const { format, parse, subMonths, startOfDay, endOfDay } = require('date-fns');
+const { zonedTimeToUtc, utcToZonedTime } = require('date-fns-tz');
+
 require('dotenv').config();
 
 app.use(cors());
@@ -194,5 +197,96 @@ app.get('/api/check-userinfo', async (req, res) => {
     res.json({ user });
   } catch (error) {
     res.status(500).json({ error: "Error checking license" });
+  }
+});
+
+app.get('/api/get-chat-histories', async (req, res) => {
+  try {
+    let { page = 1, pageSize = 10, email, startDate, endDate, excludeAdminData, adminEmails } = req.query;
+
+    const query = {};
+    if (email) query.email = email;
+
+    const now = new Date();
+    const koreaTime = utcToZonedTime(now, 'Asia/Seoul');
+
+    // 한국 시간으로 변환
+    if (startDate) {
+      startDate = zonedTimeToUtc(parse(startDate, 'yyyy-MM-dd', new Date()), 'Asia/Seoul');
+    } else {
+      startDate = zonedTimeToUtc(startOfDay(subMonths(koreaTime, 1)), 'Asia/Seoul');
+    }
+
+    if (endDate) {
+      endDate = zonedTimeToUtc(parse(endDate, 'yyyy-MM-dd', new Date()), 'Asia/Seoul');
+    } else {
+      endDate = zonedTimeToUtc(endOfDay(koreaTime), 'Asia/Seoul');
+    }
+
+    query.chat_date = { $gte: startDate, $lte: endDate };
+
+    // 관리자 데이터 제외 로직
+    if (excludeAdminData === 'true' && Array.isArray(adminEmails)) {
+      query.email = { $nin: adminEmails };
+    }
+
+    const skip = (page - 1) * pageSize;
+
+    const [results, totalCount, totalTokens] = await Promise.all([
+      ChatHistory.find(query)
+        .sort({ chat_date: -1 })
+        .skip(skip)
+        .limit(parseInt(pageSize))
+        .select('email chat_date input_token output_token')
+        .lean(),
+      ChatHistory.countDocuments(query),
+      ChatHistory.aggregate([
+        { $match: query },
+        { 
+          $group: {
+            _id: null,
+            totalInputTokens: { $sum: "$input_token" },
+            totalOutputTokens: { $sum: "$output_token" }
+          }
+        }
+      ])
+    ]);
+
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+
+    // 결과의 chat_date를 한국 시간으로 변환
+    const formattedResults = results.map(item => ({
+      ...item,
+      chat_date: format(utcToZonedTime(item.chat_date, 'Asia/Seoul'), "yyyy-MM-dd'T'HH:mm:ssXXX")
+    }));
+
+    res.json({
+      data: formattedResults,
+      currentPage: parseInt(page),
+      totalPages,
+      totalCount,
+      totalInputTokens: totalTokens[0]?.totalInputTokens || 0,
+      totalOutputTokens: totalTokens[0]?.totalOutputTokens || 0,
+      startDate: format(utcToZonedTime(startDate, 'Asia/Seoul'), 'yyyy-MM-dd'),
+      endDate: format(utcToZonedTime(endDate, 'Asia/Seoul'), 'yyyy-MM-dd')
+    });
+  } catch (error) {
+    console.error("Error fetching chat histories:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// 채팅 리스트를 가져오는 엔드포인트
+app.get('/api/get-chat-list/:id', async (req, res) => {
+  try {
+    const chatHistory = await ChatHistory.findById(req.params.id).select('chat_list').lean();
+    if (!chatHistory) {
+      return res.status(404).json({ error: "Chat history not found" });
+    }
+    res.json(chatHistory.chat_list);
+  } catch (error) {
+    console.error("Error fetching chat list:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
