@@ -210,20 +210,16 @@ app.get('/api/get-chat-histories', async (req, res) => {
     const now = new Date();
     const koreaTime = utcToZonedTime(now, 'Asia/Seoul');
 
-    // 한국 시간으로 변환
-    if (startDate) {
-      startDate = zonedTimeToUtc(parse(startDate, 'yyyy-MM-dd', new Date()), 'Asia/Seoul');
-    } else {
-      startDate = zonedTimeToUtc(startOfDay(subMonths(koreaTime, 1)), 'Asia/Seoul');
-    }
+    console.log(startDate, endDate);
+    
+    const startDateTime = new Date(startDate);
+    const endDateTime = new Date(endDate);
+    
+    // endDate의 시간을 23:59:59.999로 설정
+    endDateTime.setHours(23, 59, 59, 999);
+    
+    query.chat_date = { $gte: startDateTime, $lte: endDateTime };
 
-    if (endDate) {
-      endDate = zonedTimeToUtc(parse(endDate, 'yyyy-MM-dd', new Date()), 'Asia/Seoul');
-    } else {
-      endDate = zonedTimeToUtc(endOfDay(koreaTime), 'Asia/Seoul');
-    }
-
-    query.chat_date = { $gte: startDate, $lte: endDate };
 
     // 관리자 데이터 제외 로직
     if (excludeAdminData === 'true' && Array.isArray(adminEmails)) {
